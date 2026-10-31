@@ -20,7 +20,7 @@ public class TimedAutoDrive extends LinearOpMode {
     private final Stopper stopper = new Stopper();
     private final ServoRamp servoRamp = new ServoRamp();
     private final Shooting shooting = new Shooting();
-
+//git remote add origin https://github.com/AlnurS/34155.SAN
     // Параметры движения по таймеру (настраиваются)
     public static double DRIVE_TIME_SECONDS = 0.30; // Время движения прямо в секундах
     public static double DRIVE_POWER = 0.5;        // Мощность моторов (50%)
