@@ -1,8 +1,8 @@
 package org.firstinspires.ftc.teamcode.subsystems;
 
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
-import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
@@ -13,10 +13,11 @@ import org.firstinspires.ftc.teamcode.config.RobotConstants;
 import org.firstinspires.ftc.teamcode.pedroPathing.follower.Follower;
 
 /**
- * Simplified Mecanum Drivetrain with GoBilda Pinpoint Odometry & Pedro Pathing support.
+ * Mecanum Drivetrain с поддержкой GoBilda Pinpoint Odometry & Pedro Pathing.
+ * Защищен от сбоев отдельного оборудования (отключенных проводов/несовпадающих имен).
  */
 public class Drivetrain {
-    private DcMotor leftFront, rightFront, leftBack, rightBack;
+    private DcMotorEx leftFront, rightFront, leftBack, rightBack;
     private GoBildaPinpointDriver pinpoint;
     private VoltageSensor voltageSensor;
     private Follower pedroFollower;
@@ -24,15 +25,41 @@ public class Drivetrain {
     private double speedMultiplier = RobotConstants.NORMAL_SPEED;
 
     public void init(HardwareMap hardwareMap) {
-        leftFront = hardwareMap.get(DcMotor.class, RobotConstants.LEFT_FRONT);
-        rightFront = hardwareMap.get(DcMotor.class, RobotConstants.RIGHT_FRONT);
-        leftBack = hardwareMap.get(DcMotor.class, RobotConstants.LEFT_BACK);
-        rightBack = hardwareMap.get(DcMotor.class, RobotConstants.RIGHT_BACK);
+        try {
+            leftFront = hardwareMap.get(DcMotorEx.class, RobotConstants.LEFT_FRONT);
+            leftFront.setDirection(DcMotorSimple.Direction.FORWARD);
+            leftFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+            leftFront.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        } catch (Exception e) {
+            leftFront = null;
+        }
 
-        leftFront.setDirection(DcMotor.Direction.REVERSE);
-        leftBack.setDirection(DcMotor.Direction.REVERSE);
+        try {
+            rightFront = hardwareMap.get(DcMotorEx.class, RobotConstants.RIGHT_FRONT);
+            rightFront.setDirection(DcMotorSimple.Direction.FORWARD);
+            rightFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+            rightFront.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        } catch (Exception e) {
+            rightFront = null;
+        }
 
-        setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        try {
+            leftBack = hardwareMap.get(DcMotorEx.class, RobotConstants.LEFT_BACK);
+            leftBack.setDirection(DcMotorSimple.Direction.FORWARD);
+            leftBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+            leftBack.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        } catch (Exception e) {
+            leftBack = null;
+        }
+
+        try {
+            rightBack = hardwareMap.get(DcMotorEx.class, RobotConstants.RIGHT_BACK);
+            rightBack.setDirection(DcMotorSimple.Direction.REVERSE);
+            rightBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+            rightBack.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        } catch (Exception e) {
+            rightBack = null;
+        }
 
         // Датчик напряжения
         try {
@@ -66,13 +93,20 @@ public class Drivetrain {
 
     public void updateOdometry() {
         if (pinpoint != null) {
-            pinpoint.update();
+            try {
+                pinpoint.update();
+            } catch (Exception ignored) {
+            }
         }
     }
 
     public double getBatteryVoltage() {
         if (voltageSensor == null) return RobotConstants.NOMINAL_VOLTAGE;
-        return voltageSensor.getVoltage();
+        try {
+            return voltageSensor.getVoltage();
+        } catch (Exception e) {
+            return RobotConstants.NOMINAL_VOLTAGE;
+        }
     }
 
     public void driveMecanum(double drive, double strafe, double turn) {
@@ -92,10 +126,13 @@ public class Drivetrain {
             rb /= max;
         }
 
-        leftFront.setPower(lf);
-        rightFront.setPower(rf);
-        leftBack.setPower(lb);
-        rightBack.setPower(rb);
+        try {
+            if (leftFront != null) leftFront.setPower(lf);
+            if (rightFront != null) rightFront.setPower(rf);
+            if (leftBack != null) leftBack.setPower(lb);
+            if (rightBack != null) rightBack.setPower(rb);
+        } catch (Exception ignored) {
+        }
     }
 
     public void driveMecanumSmooth(double drive, double strafe, double turn) {
@@ -103,31 +140,61 @@ public class Drivetrain {
     }
 
     public void stopMotors() {
-        leftFront.setPower(0);
-        rightFront.setPower(0);
-        leftBack.setPower(0);
-        rightBack.setPower(0);
+        try {
+            if (leftFront != null) leftFront.setPower(0);
+            if (rightFront != null) rightFront.setPower(0);
+            if (leftBack != null) leftBack.setPower(0);
+            if (rightBack != null) rightBack.setPower(0);
+        } catch (Exception ignored) {
+        }
     }
 
     public Pose2D getPose() {
-        return pinpoint != null ? pinpoint.getPosition() : new Pose2D(DistanceUnit.INCH, 0, 0, AngleUnit.DEGREES, 0);
+        if (pinpoint != null) {
+            try {
+                return pinpoint.getPosition();
+            } catch (Exception ignored) {
+            }
+        }
+        return new Pose2D(DistanceUnit.INCH, 0, 0, AngleUnit.DEGREES, 0);
     }
 
     public double getXInches() {
-        return pinpoint != null ? pinpoint.getPosition().getX(DistanceUnit.INCH) : 0;
+        if (pinpoint != null) {
+            try {
+                return pinpoint.getPosition().getX(DistanceUnit.INCH);
+            } catch (Exception ignored) {
+            }
+        }
+        return 0;
     }
 
     public double getYInches() {
-        return pinpoint != null ? pinpoint.getPosition().getY(DistanceUnit.INCH) : 0;
+        if (pinpoint != null) {
+            try {
+                return pinpoint.getPosition().getY(DistanceUnit.INCH);
+            } catch (Exception ignored) {
+            }
+        }
+        return 0;
     }
 
     public double getHeadingDegrees() {
-        return pinpoint != null ? pinpoint.getPosition().getHeading(AngleUnit.DEGREES) : 0;
+        if (pinpoint != null) {
+            try {
+                return pinpoint.getPosition().getHeading(AngleUnit.DEGREES);
+            } catch (Exception ignored) {
+            }
+        }
+        return 0;
     }
 
     public void resetHeading() {
         if (pinpoint != null) {
-            pinpoint.resetPosAndIMU();
+            try {
+                pinpoint.resetPosAndIMU();
+            } catch (Exception ignored) {
+            }
         }
     }
 
@@ -137,14 +204,10 @@ public class Drivetrain {
 
     public void setCurrentPose(double xInches, double yInches, double headingDegrees) {
         if (pinpoint != null) {
-            pinpoint.setPosition(new Pose2D(DistanceUnit.INCH, xInches, yInches, AngleUnit.DEGREES, headingDegrees));
+            try {
+                pinpoint.setPosition(new Pose2D(DistanceUnit.INCH, xInches, yInches, AngleUnit.DEGREES, headingDegrees));
+            } catch (Exception ignored) {
+            }
         }
-    }
-
-    private void setZeroPowerBehavior(DcMotor.ZeroPowerBehavior behavior) {
-        leftFront.setZeroPowerBehavior(behavior);
-        rightFront.setZeroPowerBehavior(behavior);
-        leftBack.setZeroPowerBehavior(behavior);
-        rightBack.setZeroPowerBehavior(behavior);
     }
 }

@@ -2,7 +2,6 @@ package org.firstinspires.ftc.teamcode.pedroPathing.follower;
 
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
@@ -20,7 +19,7 @@ import org.firstinspires.ftc.teamcode.pedroPathing.pathgen.PathChain;
 import org.firstinspires.ftc.teamcode.pedroPathing.pathgen.Point;
 
 /**
- * Pedro Pathing Follower class: Handles odometry updates, path tracking, and motor outputs.
+ * Standard Pedro Pathing Follower class with Minimum Turning Torque & 4-Wheel Mecanum Rotation.
  */
 public class Follower {
     private DcMotor leftFront, rightFront, leftBack, rightBack;
@@ -37,6 +36,13 @@ public class Follower {
 
     private double maxPower = 1.0;
     private final ElapsedTime pathTimer = new ElapsedTime();
+    private final ElapsedTime loopTimer = new ElapsedTime();
+
+    // PD Controller Memory
+    private double lastXError = 0.0;
+    private double lastYError = 0.0;
+    private double lastHeadingError = 0.0;
+    private boolean firstLoop = true;
 
     public Follower(HardwareMap hardwareMap) {
         // Initialize motors
@@ -74,12 +80,17 @@ public class Follower {
         }
     }
 
+    public boolean isPinpointConnected() {
+        return pinpoint != null;
+    }
+
     public void setStartingPose(Pose pose) {
         this.currentPose = pose;
         this.targetPose = pose;
         if (pinpoint != null) {
             pinpoint.setPosition(new Pose2D(DistanceUnit.INCH, pose.getX(), pose.getY(), AngleUnit.RADIANS, pose.getHeading()));
         }
+        resetPIDState();
     }
 
     public void setPose(Pose pose) {
@@ -104,7 +115,8 @@ public class Follower {
         this.isFollowing = true;
         this.holdPositionAtEnd = holdPosition;
         this.pathTimer.reset();
-        
+        resetPIDState();
+
         if (pathChain.size() > 0) {
             Path firstPath = pathChain.get(0);
             Point endPt = firstPath.getEndPoint();
@@ -130,7 +142,22 @@ public class Follower {
         this.maxPower = Range.clip(maxPower, 0.0, 1.0);
     }
 
+    private void resetPIDState() {
+        lastXError = 0.0;
+        lastYError = 0.0;
+        lastHeadingError = 0.0;
+        firstLoop = true;
+        loopTimer.reset();
+    }
+
     public void update() {
+        // Safety check: if pinpoint is disconnected or null, stop motors immediately
+        if (pinpoint == null) {
+            stopMotors();
+            isFollowing = false;
+            return;
+        }
+
         updatePose();
 
         if (!isFollowing) {
@@ -144,20 +171,53 @@ public class Follower {
         }
 
         Path currentPath = currentPathChain.get(currentPathIndex);
-        Point targetPoint = currentPath.getEndPoint();
-        double targetHeading = currentPath.getEndHeading();
+        Point startPoint = currentPath.getStartPoint();
+        Point endPoint = currentPath.getEndPoint();
+
+        double totalDist = startPoint.distanceFrom(endPoint);
+        double distFromStart = startPoint.distanceFrom(currentPose.getPoint());
+
+        // Алгоритм с упреждением (Lookahead Distance): целевая точка всегда находится впереди на пару дюймов
+        double lookaheadInches = totalDist > 0.01 ? 6.0 : 0.0;
+        double t = totalDist > 0.01 ? Range.clip((distFromStart + lookaheadInches) / totalDist, 0.0, 1.0) : 1.0;
+
+        // Динамическая упреждающая целевая точка P(t) на кривой Безье или прямой
+        Point targetPoint = currentPath.getPoint(t);
+
+        double targetHeading;
+        if (currentPath.getInterpolationMode() == Path.HeadingInterpolation.LINEAR) {
+            double startH = currentPath.getStartHeading();
+            double endH = currentPath.getEndHeading();
+            double hDiff = AngleUnit.normalizeRadians(endH - startH);
+            targetHeading = AngleUnit.normalizeRadians(startH + t * hDiff);
+        } else if (currentPath.getInterpolationMode() == Path.HeadingInterpolation.TANGENT) {
+            // Угол касательной вдоль кривой Безье
+            Point p1 = currentPath.getPoint(Math.max(0.0, t - 0.02));
+            Point p2 = currentPath.getPoint(Math.min(1.0, t + 0.02));
+            double dx = p2.getX() - p1.getX();
+            double dy = p2.getY() - p1.getY();
+            targetHeading = Math.hypot(dx, dy) > 0.001 ? Math.atan2(dy, dx) : currentPath.getEndHeading();
+        } else {
+            targetHeading = currentPath.getEndHeading();
+        }
+
         targetPose = new Pose(targetPoint.getX(), targetPoint.getY(), targetHeading);
 
-        double xError = targetPose.getX() - currentPose.getX();
-        double yError = targetPose.getY() - currentPose.getY();
-        double distanceError = Math.hypot(xError, yError);
-        
+        // Расстояние до реального конца отрезка endPoint (для отслеживания завершения)
+        double endXError = endPoint.getX() - currentPose.getX();
+        double endYError = endPoint.getY() - currentPose.getY();
+        double distanceError = Math.hypot(endXError, endYError);
+
+        // Ошибка до динамической целевой точки с упреждением (Lookahead Target Point)
+        double driveXError = targetPoint.getX() - currentPose.getX();
+        double driveYError = targetPoint.getY() - currentPose.getY();
+
         double headingError = AngleUnit.normalizeRadians(targetHeading - currentPose.getHeading());
 
         // Check path completion
-        if (distanceError < FConstants.pathEndTranslationalConstraint && 
+        if (distanceError < FConstants.pathEndTranslationalConstraint &&
             Math.abs(headingError) < FConstants.pathEndHeadingConstraint) {
-            
+
             currentPathIndex++;
             pathTimer.reset();
 
@@ -186,15 +246,52 @@ public class Follower {
             }
         }
 
-        // PID calculations
-        double drivePower = xError * FConstants.transP;
-        double strafePower = yError * FConstants.transP;
-        double turnPower = headingError * FConstants.headingP;
+        // Calculate time delta for D-term
+        double dt = loopTimer.seconds();
+        loopTimer.reset();
+
+        double xErrorD = 0.0;
+        double yErrorD = 0.0;
+        double headingErrorD = 0.0;
+
+        if (!firstLoop && dt > 0.001 && dt < 0.2) {
+            xErrorD = (driveXError - lastXError) / dt;
+            yErrorD = (driveYError - lastYError) / dt;
+            headingErrorD = (headingError - lastHeadingError) / dt;
+        } else {
+            firstLoop = false;
+        }
+
+        lastXError = driveXError;
+        lastYError = driveYError;
+        lastHeadingError = headingError;
+
+        // PD calculations
+        double drivePower = Range.clip(driveXError * FConstants.transP + xErrorD * FConstants.transD, -1.0, 1.0);
+        double strafePower = Range.clip(driveYError * FConstants.transP + yErrorD * FConstants.transD, -1.0, 1.0);
+        double turnPower = Range.clip(-(headingError * FConstants.headingP + headingErrorD * FConstants.headingD), -1.0, 1.0);
+
+        // Стандартная зона нечувствительности (Deadband) на основе системных ограничений FConstants:
+        // Если робот находится внутри допуска по координатам, линейная мощность сбрасывается в 0
+        if (distanceError < FConstants.pathEndTranslationalConstraint) {
+            drivePower = 0.0;
+            strafePower = 0.0;
+        }
+
+        // Если робот находится внутри допуска по углу, разворот сбрасывается в 0
+        if (Math.abs(headingError) < FConstants.pathEndHeadingConstraint) {
+            turnPower = 0.0;
+        } else {
+            double minTurnPower = 0.25; // Минимальная мощность для уверенного преодоления трения
+            if (Math.abs(turnPower) < minTurnPower && Math.abs(turnPower) > 0.01) {
+                turnPower = Math.signum(turnPower) * minTurnPower;
+            }
+        }
 
         // Convert field centric to robot centric
         double botHeading = currentPose.getHeading();
-        double rotX = drivePower * Math.cos(-botHeading) - strafePower * Math.sin(-botHeading);
-        double rotY = drivePower * Math.sin(-botHeading) + strafePower * Math.cos(-botHeading);
+        double rotX = drivePower * Math.cos(botHeading) + strafePower * Math.sin(botHeading);
+        double rotY = -drivePower * Math.sin(botHeading) + strafePower * Math.cos(botHeading);
 
         driveMecanum(rotX, rotY, turnPower);
     }

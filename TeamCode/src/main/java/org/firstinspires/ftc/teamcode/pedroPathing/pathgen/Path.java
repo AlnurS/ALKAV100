@@ -60,7 +60,16 @@ public class Path {
         return setLinearHeadingInterpolation(startHeading, endHeading);
     }
 
+    public Path linear(Pose startPose, Pose endPose) {
+        return setLinearHeadingInterpolation(startPose.getHeading(), endPose.getHeading());
+    }
+
     public Path setTangentHeadingInterpolation() {
+        this.interpolationMode = HeadingInterpolation.TANGENT;
+        return this;
+    }
+
+    public Path reverseTangent() {
         this.interpolationMode = HeadingInterpolation.TANGENT;
         return this;
     }
@@ -71,6 +80,20 @@ public class Path {
 
     public Point getEndPoint() {
         return line != null ? line.getEndPoint() : curve.getEndPoint();
+    }
+
+    /**
+     * Evaluates point P(t) along the Bezier curve or line for t in [0, 1].
+     */
+    public Point getPoint(double t) {
+        if (curve != null) {
+            return curve.getPoint(t);
+        } else if (line != null) {
+            Point s = line.getStartPoint();
+            Point e = line.getEndPoint();
+            return new Point((1 - t) * s.getX() + t * e.getX(), (1 - t) * s.getY() + t * e.getY());
+        }
+        return getEndPoint();
     }
 
     public double getStartHeading() {

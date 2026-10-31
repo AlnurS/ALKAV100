@@ -1,28 +1,37 @@
 package org.firstinspires.ftc.teamcode.config;
 
+import com.acmerobotics.dashboard.config.Config;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 
+@Config
 public class RobotConstants {
     // Drivetrain
-    public static final String LEFT_FRONT = "leftFront";
-    public static final String RIGHT_FRONT = "rightFront";
-    public static final String LEFT_BACK = "leftBack";
-    public static final String RIGHT_BACK = "rightBack";
+    public static String LEFT_FRONT = "leftFront";
+    public static String RIGHT_FRONT = "rightFront";
+    public static String LEFT_BACK = "leftBack";
+    public static String RIGHT_BACK = "rightBack";
 
-    public static final double NORMAL_SPEED = 1.0;
-    public static final double SLOW_SPEED = 0.3;
+    public static double NORMAL_SPEED = 1.0;
+    public static double SLOW_SPEED = 0.3;
 
-    // Pinpoint Odometry
-    public static final String PINPOINT_NAME = "pinpoint";
-    public static final GoBildaPinpointDriver.EncoderDirection X_DIRECTION = GoBildaPinpointDriver.EncoderDirection.FORWARD;
-    public static final GoBildaPinpointDriver.EncoderDirection Y_DIRECTION = GoBildaPinpointDriver.EncoderDirection.FORWARD;
+    // Closed-Loop Velocity Control (Максимальная скорость моторов в тиках/сек)
+    public static double MAX_TICKS_PER_SECOND = 2500.0;
 
-    // Смещение одо-подов относительно центра вращения робота (в мм) - итерация калибровки 2
-    public static final double X_POD_OFFSET_MM = -86.0;
-    public static final double Y_POD_OFFSET_MM = 3.9;
+    // Pinpoint Odometry Configuration
+    public static String PINPOINT_NAME = "pinpoint";
+    public static GoBildaPinpointDriver.EncoderDirection X_DIRECTION = GoBildaPinpointDriver.EncoderDirection.REVERSED;
+    public static GoBildaPinpointDriver.EncoderDirection Y_DIRECTION = GoBildaPinpointDriver.EncoderDirection.REVERSED;
+
+    /**
+     * Смещение одо-подов относительно ЦЕНТРА ВРАЩЕНИЯ робота (в мм):
+     * - X_POD_OFFSET_MM: Боковой сдвиг (влево/вправо) X-пода (измеряющего движение ВПЕРЕД/НАЗАД).
+     * - Y_POD_OFFSET_MM: Продольный сдвиг (вперед/назад) Y-пода (измеряющего движение ВБОК/СТРЕЙФ).
+     */
+    public static double X_POD_OFFSET_MM = -100;
+    public static double Y_POD_OFFSET_MM = 105;
 
     // Voltage Compensation
-    public static final double NOMINAL_VOLTAGE = 12.0;
+    public static final double NOMINAL_VOLTAGE = 12.2;
 
     // Lift система лифтов
     public static final String LIFT_MOTOR_LEFT_NAME = "liftLeft";
@@ -64,6 +73,11 @@ public class RobotConstants {
 
     // Stopper Servo
     public static final String STOPPER_SERVO_NAME = "stopperServo";
-    public static final double STOPPER_POS_CLOSED = 0.0; // 0°
-    public static final double STOPPER_POS_OPEN = 1.0;   // 180°
+    public static double STOPPER_POS_CLOSED = 70.0;  // 70° в опущенном положении
+    public static double STOPPER_POS_OPEN = 104.0;   // 160° в поднятом положении (сильный подъём)
+
+    // ServoRamp (goBILDA 300° Dual Mode Servo на пине 0: "SERVO RAMPA")
+    public static final String RAMP_SERVO_NAME = "SERVO RAMPA";
+    public static double RAMP_POS_CLOSED = 0.0;  // 0.0 (полностью опущена)
+    public static double RAMP_POS_OPEN = 1.0;    // 1.0 (полностью поднята на максимальный угол 300°)
 }

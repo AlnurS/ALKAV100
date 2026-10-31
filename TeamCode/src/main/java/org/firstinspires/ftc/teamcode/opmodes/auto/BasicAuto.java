@@ -1,76 +1,118 @@
 package org.firstinspires.ftc.teamcode.opmodes.auto;
 
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
-import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 
-import org.firstinspires.ftc.teamcode.config.RobotConstants;
+import org.firstinspires.ftc.teamcode.pedroPathing.follower.Follower;
+import org.firstinspires.ftc.teamcode.pedroPathing.localization.Pose;
+import org.firstinspires.ftc.teamcode.pedroPathing.localization.PoseFactory;
+import org.firstinspires.ftc.teamcode.pedroPathing.pathgen.BezierLine;
+import org.firstinspires.ftc.teamcode.pedroPathing.pathgen.Path;
+import org.firstinspires.ftc.teamcode.pedroPathing.pathgen.PathChain;
+import org.firstinspires.ftc.teamcode.pedroPathing.pathgen.Point;
+import org.firstinspires.ftc.teamcode.pedroPathing.util.Timer;
+import org.firstinspires.ftc.teamcode.subsystems.Intake;
+import org.firstinspires.ftc.teamcode.subsystems.Shooting;
+import org.firstinspires.ftc.teamcode.subsystems.Stopper;
 
 /**
- * Simple Timer-based Autonomous OpMode with Drive and Strafe.
+ * Standard Autonomous OpMode using Pedro Pathing PathChain.
+ * 1. Едем прямо из (31, 8) в (31, 25) под углом 90°
+ * 2. Поворачиваем на месте с 90° на 0° в точке (31, 25)
+ * 3. Едем прямо из (31, 25) в (35, 25) под углом 0°
  */
-@Autonomous(name = "Basic Auto (Timer)", group = "Autonomous")
-public class BasicAuto extends LinearOpMode {
+@Autonomous(name = "Main Autonomous (67)", group = "Autonomous")
+public class BasicAuto extends OpMode {
 
-    private DcMotor leftFront, rightFront, leftBack, rightBack;
+    private Follower follower;
+    private Timer opModeTimer;
+
+    // Подсистемы робота
+    private final Intake intake = new Intake();
+    private final Stopper stopper = new Stopper();
+    private final Shooting shooting = new Shooting();
+
+    // Фабрика поз (угол в градусах)
+    private final PoseFactory poseFactory = PoseFactory.degrees();
+
+    // Poses (Заданные координаты)
+    private final Pose start1      = poseFactory.of(31, 8, 90);   // Старт
+    private final Pose path8       = poseFactory.of(31, 25, 90);  // Конец первого движения (прямо)
+    private final Pose path8Turned = poseFactory.of(31, 25, 0);   // Поворот на месте с 90° до 0°
+    private final Pose point3      = poseFactory.of(45, 25, 0);   // Конец отдельного движения после поворота
+
+    // Единственная цепочка путей (PathChain)
+    private PathChain autoPathChain;
+
+    public Path line(Pose start, Pose end) {
+        return new Path(new BezierLine(new Point(start), new Point(end)));
+    }
+
+    public void buildPaths() {
+        // Создаем единую неразрывную цепочку отрезков
+        autoPathChain = new PathChain(
+            // Отрезок 1: движение прямо вперед от start1 к path8 под углом 90°
+            line(start1, path8).constant(path8),
+            
+            // Отрезок 2: чистый поворот на месте в точке (31, 25) с 90° на 0°
+            line(path8, path8Turned).linear(path8.getHeading(), path8Turned.getHeading()),
+            
+            // Отрезок 3: движение прямо от path8Turned (31, 25) к point3 (35, 25) под углом 0°
+            line(path8Turned, point3).constant(point3)
+        );
+    }
 
     @Override
-    public void runOpMode() {
-        // Инициализация моторов
-        leftFront = hardwareMap.get(DcMotor.class, RobotConstants.LEFT_FRONT);
-        rightFront = hardwareMap.get(DcMotor.class, RobotConstants.RIGHT_FRONT);
-        leftBack = hardwareMap.get(DcMotor.class, RobotConstants.LEFT_BACK);
-        rightBack = hardwareMap.get(DcMotor.class, RobotConstants.RIGHT_BACK);
+    public void init() {
+        opModeTimer = new Timer();
 
-        // Направление моторов для меканума
-        leftFront.setDirection(DcMotor.Direction.REVERSE);
-        leftBack.setDirection(DcMotor.Direction.REVERSE);
-        rightFront.setDirection(DcMotor.Direction.FORWARD);
-        rightBack.setDirection(DcMotor.Direction.FORWARD);
+        follower = new Follower(hardwareMap);
+        follower.setStartingPose(start1);
+        follower.setMaxPower(0.6); // 60% мощности
+        buildPaths();
 
-        // Торможение при нулевой мощности
-        leftFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        rightFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        leftBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        rightBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        intake.init(hardwareMap);
+        stopper.init(hardwareMap);
+        shooting.init(hardwareMap);
 
-        telemetry.addData("Status", "Initialized. Ready to start.");
+        telemetry.addData("Status", "Main Autonomous Initialized & Ready!");
         telemetry.update();
-
-        waitForStart();
-
-        if (opModeIsActive()) {
-            // 1. Едем вперед со скоростью 0.5 в течение 500 мс (0.5 сек)
-            telemetry.addData("Status", "Driving Forward...");
-            telemetry.update();
-            setDrivePower(0.5);
-            sleep(500);
-
-            // 2. Едем в бок со скоростью 0.5 в течение 1000 мс (1 сек)
-            telemetry.addData("Status", "Strafing...");
-            telemetry.update();
-            setStrafePower(0.5); // Используйте -0.5 для стрейфа в другую сторону
-            sleep(1000);
-
-            // 3. Останавливаем моторы
-            setDrivePower(0.0);
-            telemetry.addData("Status", "Done.");
-            telemetry.update();
-        }
     }
 
-    private void setDrivePower(double power) {
-        leftFront.setPower(power);
-        rightFront.setPower(power);
-        leftBack.setPower(power);
-        rightBack.setPower(power);
+    @Override
+    public void init_loop() {
+        follower.setStartingPose(start1);
+        follower.update();
+
+        telemetry.addData("Status", "INIT LOOP - Calibrating Pose...");
+        telemetry.addData("Current X", "%.2f in", follower.getPose().getX());
+        telemetry.addData("Current Y", "%.2f in", follower.getPose().getY());
+        telemetry.addData("Current Heading", "%.2f deg", Math.toDegrees(follower.getPose().getHeading()));
+        telemetry.update();
     }
 
-    private void setStrafePower(double power) {
-        leftFront.setPower(power);
-        rightFront.setPower(-power);
-        leftBack.setPower(-power);
-        rightBack.setPower(power);
+    @Override
+    public void start() {
+        opModeTimer.resetTimer();
+        follower.setStartingPose(start1);
+        
+        // Запускаем единую цепочку движения (PathChain)
+        follower.followPath(autoPathChain, true);
+    }
+
+    @Override
+    public void loop() {
+        // Обновляем состояние фолловера и подсистем
+        follower.update();
+        intake.update();
+        shooting.update();
+
+        // Телеметрия
+        telemetry.addData("Follower Busy", follower.isBusy());
+        telemetry.addData("Current X", "%.2f in", follower.getPose().getX());
+        telemetry.addData("Current Y", "%.2f in", follower.getPose().getY());
+        telemetry.addData("Current Heading", "%.2f deg", Math.toDegrees(follower.getPose().getHeading()));
+        telemetry.addData("OpMode Time", "%.2f s", opModeTimer.getElapsedTimeSeconds());
+        telemetry.update();
     }
 }
