@@ -14,7 +14,7 @@ import org.firstinspires.ftc.teamcode.subsystems.Shooting;
 public class ShooterTestOpMode extends LinearOpMode {
 
     // Настраиваемые переменные через FTC Dashboard
-    public static double testPower = 0.70;          // Начальная мощность маховиков (70%)
+    public static double testPower = 1.00;          // Начальная мощность маховиков (100% -> 2000 тиков/сек)
     public static double boostPower = 1.00;         // Максимальная мощность (100%)
     public static boolean autoFeedWhenReady = false; // Авто-подача при достижении скорости
 

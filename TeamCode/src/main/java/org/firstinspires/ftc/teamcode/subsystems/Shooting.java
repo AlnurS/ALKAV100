@@ -5,7 +5,6 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
-import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
@@ -23,15 +22,8 @@ public class Shooting {
     private double targetVelocity = 0;        // Целевая скорость в тиках в секунду
     private double powerCoefficient = RobotConstants.SHOOTING_POWER_COEFFICIENT;
 
-    // Настройки максимальной скорости и выравнивания для FTC Dashboard
-    public static double MAX_TICKS_PER_SECOND = 2800.0; // Максимальная физическая скорость моторов
-    public static double SYNC_KP = 0.05;                // Коэффициент выравнивания скоростей моторов (P-Sync)
-
-    // PIDF параметры для аппаратного регулятора REV Hub
-    public static double PIDF_P = 15.0;
-    public static double PIDF_I = 0.2;
-    public static double PIDF_D = 0.0;
-    public static double PIDF_F = 12.0;
+    // Целевая рабочая скорость шутера (2000 тиков в секунду)
+    public static double MAX_TICKS_PER_SECOND = 2000.0;
 
     private double current1Amps = 0.0;
     private double current2Amps = 0.0;
@@ -44,7 +36,7 @@ public class Shooting {
             shooting1 = hardwareMap.get(DcMotorEx.class, RobotConstants.SHOOTING1_MOTOR_NAME);
             shooting2 = hardwareMap.get(DcMotorEx.class, RobotConstants.SHOOTING2_MOTOR_NAME);
 
-            // Режим аппаратного PIDF
+            // Чистый встроенный аппаратный режим регуляции REV Control Hub (RUN_USING_ENCODER)
             shooting1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
             shooting2.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
@@ -54,11 +46,6 @@ public class Shooting {
 
             shooting1.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
             shooting2.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
-
-            // Применяем коэффициенты PIDF к обоим моторам
-            PIDFCoefficients pidf = new PIDFCoefficients(PIDF_P, PIDF_I, PIDF_D, PIDF_F);
-            shooting1.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER, pidf);
-            shooting2.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER, pidf);
         } catch (Exception e) {
             shooting1 = null;
             shooting2 = null;
@@ -158,22 +145,11 @@ public class Shooting {
             return;
         }
 
-        // 1. Считываем текущие скорости обоих моторов
-        double v1 = shooting1.getVelocity();
-        double v2 = shooting2.getVelocity();
+        // Чистое встроенное управление аппаратным регулятором REV Hub (2000 тиков/сек)
+        shooting1.setVelocity(targetVelocity);
+        shooting2.setVelocity(targetVelocity);
 
-        // 2. Расчет расхождения скоростей (ошибка синхронизации)
-        double syncError = v1 - v2;
-        double syncCorrection = syncError * SYNC_KP;
-
-        // 3. Выравниваем целевые скорости: более быстрый мотор притормаживается, отстающий ускоряется
-        double targetV1 = targetVelocity - syncCorrection;
-        double targetV2 = targetVelocity + syncCorrection;
-
-        shooting1.setVelocity(targetV1);
-        shooting2.setVelocity(targetV2);
-
-        // Считывание токовой нагрузки
+        // Считывание тока для мониторинга
         try {
             current1Amps = shooting1.getCurrent(CurrentUnit.AMPS);
             current2Amps = shooting2.getCurrent(CurrentUnit.AMPS);
