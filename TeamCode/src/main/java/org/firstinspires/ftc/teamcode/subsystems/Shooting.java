@@ -1,9 +1,11 @@
 package org.firstinspires.ftc.teamcode.subsystems;
 
+import com.acmerobotics.dashboard.config.Config;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
@@ -11,19 +13,26 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
 import org.firstinspires.ftc.teamcode.config.RobotConstants;
 
+@Config
 public class Shooting {
     private DcMotorEx shooting1, shooting2;
     private Servo feederServo;
     private VoltageSensor voltageSensor;
 
-    private double targetPower = 0;           // Мощность от 0.0 до 1.0 (доля от максимальной скорости)
-    private double targetVelocity = 0;        // Целевая скорость в тиках в секунду (Ticks/sec)
+    private double targetPower = 0;           // Мощность от 0.0 до 1.0
+    private double targetVelocity = 0;        // Целевая скорость в тиках в секунду
     private double powerCoefficient = RobotConstants.SHOOTING_POWER_COEFFICIENT;
 
-    // Максимальная скорость моторов в тиках в секунду
-    public static double DEFAULT_MAX_TICKS_PER_SECOND = RobotConstants.MAX_TICKS_PER_SECOND;
+    // Настройки максимальной скорости и выравнивания для FTC Dashboard
+    public static double MAX_TICKS_PER_SECOND = 2800.0; // Максимальная физическая скорость моторов
+    public static double SYNC_KP = 0.05;                // Коэффициент выравнивания скоростей моторов (P-Sync)
 
-    private double maxVelocityTicksPerSecond = DEFAULT_MAX_TICKS_PER_SECOND;
+    // PIDF параметры для аппаратного регулятора REV Hub
+    public static double PIDF_P = 15.0;
+    public static double PIDF_I = 0.2;
+    public static double PIDF_D = 0.0;
+    public static double PIDF_F = 12.0;
+
     private double current1Amps = 0.0;
     private double current2Amps = 0.0;
 
@@ -35,16 +44,21 @@ public class Shooting {
             shooting1 = hardwareMap.get(DcMotorEx.class, RobotConstants.SHOOTING1_MOTOR_NAME);
             shooting2 = hardwareMap.get(DcMotorEx.class, RobotConstants.SHOOTING2_MOTOR_NAME);
 
-            // Включаем встроенный аппаратный PIDF-регулятор REV Control Hub (RUN_USING_ENCODER)
+            // Режим аппаратного PIDF
             shooting1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
             shooting2.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
-            // Разнонаправленные моторы (инверсия одного из моторов)
+            // Разнонаправленные моторы (инверсия мотора 1)
             shooting1.setDirection(DcMotor.Direction.REVERSE);
             shooting2.setDirection(DcMotor.Direction.FORWARD);
 
             shooting1.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
             shooting2.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+
+            // Применяем коэффициенты PIDF к обоим моторам
+            PIDFCoefficients pidf = new PIDFCoefficients(PIDF_P, PIDF_I, PIDF_D, PIDF_F);
+            shooting1.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER, pidf);
+            shooting2.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER, pidf);
         } catch (Exception e) {
             shooting1 = null;
             shooting2 = null;
@@ -78,18 +92,18 @@ public class Shooting {
     }
 
     public void reverse() {
-        setTargetVelocity(-maxVelocityTicksPerSecond * 0.5);
+        setTargetVelocity(-MAX_TICKS_PER_SECOND * 0.5);
         spinningUp = false;
     }
 
     public void setPower(double power) {
         this.targetPower = power;
-        this.targetVelocity = power * maxVelocityTicksPerSecond * powerCoefficient;
+        this.targetVelocity = power * MAX_TICKS_PER_SECOND * powerCoefficient;
     }
 
     public void setTargetVelocity(double velocityTicksPerSec) {
         this.targetVelocity = velocityTicksPerSec;
-        this.targetPower = maxVelocityTicksPerSecond > 0 ? velocityTicksPerSec / maxVelocityTicksPerSecond : 0;
+        this.targetPower = MAX_TICKS_PER_SECOND > 0 ? velocityTicksPerSec / MAX_TICKS_PER_SECOND : 0;
     }
 
     public double getTargetVelocity() {
@@ -126,11 +140,11 @@ public class Shooting {
     }
 
     public void setMaxVelocityTicksPerSecond(double maxVelocity) {
-        this.maxVelocityTicksPerSecond = maxVelocity;
+        MAX_TICKS_PER_SECOND = maxVelocity;
     }
 
     public double getMaxVelocity() {
-        return maxVelocityTicksPerSecond;
+        return MAX_TICKS_PER_SECOND;
     }
 
     public void update() {
@@ -144,11 +158,22 @@ public class Shooting {
             return;
         }
 
-        // Встроенный аппаратный PIDF на REV Control Hub точно удерживает заданную скорость
-        shooting1.setVelocity(targetVelocity);
-        shooting2.setVelocity(targetVelocity);
+        // 1. Считываем текущие скорости обоих моторов
+        double v1 = shooting1.getVelocity();
+        double v2 = shooting2.getVelocity();
 
-        // Считывание тока для мониторинга
+        // 2. Расчет расхождения скоростей (ошибка синхронизации)
+        double syncError = v1 - v2;
+        double syncCorrection = syncError * SYNC_KP;
+
+        // 3. Выравниваем целевые скорости: более быстрый мотор притормаживается, отстающий ускоряется
+        double targetV1 = targetVelocity - syncCorrection;
+        double targetV2 = targetVelocity + syncCorrection;
+
+        shooting1.setVelocity(targetV1);
+        shooting2.setVelocity(targetV2);
+
+        // Считывание токовой нагрузки
         try {
             current1Amps = shooting1.getCurrent(CurrentUnit.AMPS);
             current2Amps = shooting2.getCurrent(CurrentUnit.AMPS);
@@ -175,7 +200,6 @@ public class Shooting {
     }
 
     public boolean isReady() {
-        // Шутер считается готовым, если разгоняется дольше задержки И фактическая скорость моторов досягает >= 90% от целевой
         double v1 = Math.abs(getVelocity1());
         double v2 = Math.abs(getVelocity2());
         double target = Math.abs(targetVelocity);
