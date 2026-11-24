@@ -26,21 +26,19 @@ public class Shooting {
     private double lastSetVelocity2 = -99999;
     private double powerCoefficient = RobotConstants.SHOOTING_POWER_COEFFICIENT;
 
-    // Целевая рабочая скорость шутера (2000 тиков в секунду)
-    public static double MAX_TICKS_PER_SECOND = 2000.0;
+    // МАКСИМАЛЬНАЯ ФИЗИЧЕСКАЯ СКОРОСТЬ ШУТЕРА (2800+ тиков в секунду)
+    public static double MAX_TICKS_PER_SECOND = 2800.0;
 
     // --- АЭРОДИНАМИЧЕСКИЕ НАСТРОЙКИ (FTC Dashboard) ---
-    // Компенсация воздушного сопротивления для Мотора 2
     public static double MOTOR2_AIR_BOOST = 1.00;
-    // Плавный разгон
     public static boolean USE_SMOOTH_RAMP = true;
-    public static double RAMP_STEP_TICKS = 80.0; // Шаг нарастания скорости за один кадр
+    public static double RAMP_STEP_TICKS = 150.0; // Быстрый разгон до максимума за 150 тиков/кадр
 
-    // Точно доведенные PIDF параметры для устранения погрешности в 40 тиков
-    public static double PIDF_P = 4.5;        // Увеличенный P для устранения остаточной погрешности в 40 тиков
-    public static double PIDF_I = 0.0;        // I = 0 (убирает уплывание)
+    // Сбалансированные PIDF параметры под МАКСИМАЛЬНУЮ скорость (2800+ t/s)
+    public static double PIDF_P = 4.0;        // Высокий P для быстрой стабилизации на максимуме
+    public static double PIDF_I = 0.0;        // I = 0 (отсутствие накопительной ошибки)
     public static double PIDF_D = 0.0;
-    public static double PIDF_F = 15.8;       // Сбалансированный Feedforward под 2000 тиков/сек
+    public static double PIDF_F = 11.7;       // Точный Feedforward под предельные 2800 тиков/сек
 
     private double current1Amps = 0.0;
     private double current2Amps = 0.0;
@@ -68,7 +66,7 @@ public class Shooting {
             shooting1.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
             shooting2.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
-            // Применяем коэффициенты
+            // Применяем коэффициенты под максимальную скорость
             applyPIDF();
         } catch (Exception e) {
             shooting1 = null;
@@ -184,7 +182,7 @@ public class Shooting {
             return;
         }
 
-        // 1. ПЛАВНЫЙ АЭРОДИНАМИЧЕСКИЙ РАЗГОН (Ramp)
+        // 1. БЫСТРЫЙ И ПЛАВНЫЙ РАЗГОН ДО МАКСИМУМА (Ramp)
         if (USE_SMOOTH_RAMP) {
             if (currentRampVelocity < targetVelocity) {
                 currentRampVelocity = Math.min(targetVelocity, currentRampVelocity + RAMP_STEP_TICKS);
@@ -199,7 +197,7 @@ public class Shooting {
         double v1Target = currentRampVelocity;
         double v2Target = currentRampVelocity * MOTOR2_AIR_BOOST;
 
-        // Отправка команд на моторы только при изменении скоростей
+        // Отправка команд на моторы при изменении скоростей
         if (Math.abs(v1Target - lastSetVelocity1) > 1.0) {
             shooting1.setVelocity(v1Target);
             lastSetVelocity1 = v1Target;
@@ -209,7 +207,7 @@ public class Shooting {
             lastSetVelocity2 = v2Target;
         }
 
-        // Фильтрация показаний скоростей для стабильного отображения в телеметрии
+        // Фильтрация показаний скоростей для стабильной телеметрии
         double raw1 = shooting1.getVelocity();
         double raw2 = shooting2.getVelocity();
         filteredVelocity1 = 0.25 * raw1 + 0.75 * filteredVelocity1;

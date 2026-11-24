@@ -15,7 +15,7 @@ public class RobotConstants {
     public static double SLOW_SPEED = 0.3;
 
     // Closed-Loop Velocity Control (Максимальная скорость моторов в тиках/сек)
-    public static double MAX_TICKS_PER_SECOND = 2000.0;
+    public static double MAX_TICKS_PER_SECOND = 2800.0;
 
     // Pinpoint Odometry Configuration
     public static String PINPOINT_NAME = "pinpoint";
