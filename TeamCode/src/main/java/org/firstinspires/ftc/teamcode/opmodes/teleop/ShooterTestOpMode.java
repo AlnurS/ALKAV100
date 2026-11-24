@@ -64,23 +64,27 @@ public class ShooterTestOpMode extends LinearOpMode {
             }
             lastButtonA = gamepad1.a;
 
-            // --- 3. РЕЖИМЫ РАБОТЫ (X - Реверс, R2 - Максимум) ---
+            // --- 3. РЕЖИМЫ РАБОТЫ (R2 - Активация шутера, X - Реверс) ---
+            boolean isR2Pressed = gamepad1.right_trigger > 0.1;
+            boolean isL2Pressed = gamepad1.left_trigger > 0.1;
+
             if (gamepad1.x) {
+                // Реверс маховиков при кнопке X
                 shooting.reverse();
-            } else if (gamepad1.right_trigger > 0.1) {
-                shooting.setPower(boostPower);
-            } else if (isShooterRunning) {
-                shooting.setPower(testPower);
+            } else if (isR2Pressed || isShooterRunning) {
+                // Включение раскрутки маховиков при зажатии R2 или тумблером A
+                double powerToUse = isR2Pressed ? (gamepad1.right_bumper ? boostPower : testPower) : testPower;
+                shooting.setPower(powerToUse);
             } else {
                 shooting.stop();
             }
 
-            // --- 4. УПРАВЛЕНИЕ ПОДАЧЕЙ (FEEDER SERVO) ---
-            if (gamepad1.right_bumper) {
-                // Ручная подача при нажатии R1 (Right Bumper)
+            // --- 4. УПРАВЛЕНИЕ ПОДАЧЕЙ (L2 / R1 - FEEDER SERVO) ---
+            if (isL2Pressed || gamepad1.right_bumper) {
+                // Подача сервоприводом при зажатии L2 или R1
                 shooting.feed();
-            } else if (autoFeedWhenReady && isShooterRunning && shooting.isReady()) {
-                // Авто-подача при наборе целевой скорости
+            } else if (autoFeedWhenReady && (isShooterRunning || isR2Pressed) && shooting.isReady()) {
+                // Авто-подача при наборе скорости
                 shooting.feed();
             } else {
                 shooting.stopFeed();
