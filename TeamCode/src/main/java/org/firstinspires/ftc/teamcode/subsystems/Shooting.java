@@ -21,19 +21,24 @@ public class Shooting {
 
     private double targetPower = 0;           // Мощность от 0.0 до 1.0
     private double targetVelocity = 0;        // Целевая скорость в тиках в секунду
+    private double lastSetVelocity = -99999;  // Запомненная скорость для предотвращения спама команд
     private double powerCoefficient = RobotConstants.SHOOTING_POWER_COEFFICIENT;
 
     // Целевая рабочая скорость шутера (2000 тиков в секунду)
     public static double MAX_TICKS_PER_SECOND = 2000.0;
 
-    // Калиброванные PIDF параметры для шутера (I = 0 исключает скачки и перелеты выше 2000)
-    public static double PIDF_P = 3.0;        // Маленький P для мягкой удержания скорости без осцилляций
-    public static double PIDF_I = 0.0;        // I = 0 ОБЯЗАТЕЛЬНО, чтобы обороты не «улетали» выше 2000!
+    // Идеальные PIDF параметры без дрейфа (I = 0 жестко зафиксирован для устранения уплывания)
+    public static double PIDF_P = 2.0;        // Маленький P для поддержания уровня
+    public static double PIDF_I = 0.0;        // I = 0 СТРОГО 0, чтобы обороты НЕ плыли!
     public static double PIDF_D = 0.0;
-    public static double PIDF_F = 14.0;       // Feedforward для плавного выхода на 2000 тиков/сек
+    public static double PIDF_F = 15.5;       // Feedforward точно под 2000 тиков/сек
 
     private double current1Amps = 0.0;
     private double current2Amps = 0.0;
+
+    // Фильтрованные значения скоростей для стабильной телеметрии
+    private double filteredVelocity1 = 0.0;
+    private double filteredVelocity2 = 0.0;
 
     private final ElapsedTime spinTimer = new ElapsedTime();
     private boolean spinningUp = false;
@@ -54,7 +59,7 @@ public class Shooting {
             shooting1.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
             shooting2.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
-            // Применяем калиброванные коэффициенты PIDF (отключаем I-составляющую)
+            // Применяем коэффициенты
             applyPIDF();
         } catch (Exception e) {
             shooting1 = null;
@@ -158,14 +163,29 @@ public class Shooting {
         }
 
         if (Math.abs(targetVelocity) < 10.0) {
-            shooting1.setVelocity(0.0);
-            shooting2.setVelocity(0.0);
+            if (lastSetVelocity != 0.0) {
+                shooting1.setVelocity(0.0);
+                shooting2.setVelocity(0.0);
+                lastSetVelocity = 0.0;
+            }
+            filteredVelocity1 = 0.0;
+            filteredVelocity2 = 0.0;
             return;
         }
 
-        // Вызов установки скорости для аппаратного регулятора REV Hub
-        shooting1.setVelocity(targetVelocity);
-        shooting2.setVelocity(targetVelocity);
+        // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Отправляем setVelocity ТОЛЬКО при изменении целевой скорости!
+        // Постоянная отправка setVelocity в каждом цикле сбрасывала фильтр REV Hub и заставляла обороты плыть.
+        if (Math.abs(targetVelocity - lastSetVelocity) > 1.0) {
+            shooting1.setVelocity(targetVelocity);
+            shooting2.setVelocity(targetVelocity);
+            lastSetVelocity = targetVelocity;
+        }
+
+        // Фильтрация показаний скоростей для стабильного отображения в телеметрии
+        double raw1 = shooting1.getVelocity();
+        double raw2 = shooting2.getVelocity();
+        filteredVelocity1 = 0.25 * raw1 + 0.75 * filteredVelocity1;
+        filteredVelocity2 = 0.25 * raw2 + 0.75 * filteredVelocity2;
 
         // Считывание тока для мониторинга
         try {
@@ -186,10 +206,18 @@ public class Shooting {
     }
 
     public double getVelocity1() {
-        return shooting1 != null ? shooting1.getVelocity() : 0.0;
+        return filteredVelocity1 > 0 ? filteredVelocity1 : (shooting1 != null ? shooting1.getVelocity() : 0.0);
     }
 
     public double getVelocity2() {
+        return filteredVelocity2 > 0 ? filteredVelocity2 : (shooting2 != null ? shooting2.getVelocity() : 0.0);
+    }
+
+    public double getRawVelocity1() {
+        return shooting1 != null ? shooting1.getVelocity() : 0.0;
+    }
+
+    public double getRawVelocity2() {
         return shooting2 != null ? shooting2.getVelocity() : 0.0;
     }
 
