@@ -5,6 +5,7 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
@@ -25,6 +26,12 @@ public class Shooting {
     // Целевая рабочая скорость шутера (2000 тиков в секунду)
     public static double MAX_TICKS_PER_SECOND = 2000.0;
 
+    // Калиброванные PIDF параметры для шутера (I = 0 исключает скачки и перелеты выше 2000)
+    public static double PIDF_P = 3.0;        // Маленький P для мягкой удержания скорости без осцилляций
+    public static double PIDF_I = 0.0;        // I = 0 ОБЯЗАТЕЛЬНО, чтобы обороты не «улетали» выше 2000!
+    public static double PIDF_D = 0.0;
+    public static double PIDF_F = 14.0;       // Feedforward для плавного выхода на 2000 тиков/сек
+
     private double current1Amps = 0.0;
     private double current2Amps = 0.0;
 
@@ -36,7 +43,7 @@ public class Shooting {
             shooting1 = hardwareMap.get(DcMotorEx.class, RobotConstants.SHOOTING1_MOTOR_NAME);
             shooting2 = hardwareMap.get(DcMotorEx.class, RobotConstants.SHOOTING2_MOTOR_NAME);
 
-            // Чистый встроенный аппаратный режим регуляции REV Control Hub (RUN_USING_ENCODER)
+            // Режим аппаратного PIDF
             shooting1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
             shooting2.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
@@ -46,6 +53,9 @@ public class Shooting {
 
             shooting1.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
             shooting2.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+
+            // Применяем калиброванные коэффициенты PIDF (отключаем I-составляющую)
+            applyPIDF();
         } catch (Exception e) {
             shooting1 = null;
             shooting2 = null;
@@ -64,6 +74,14 @@ public class Shooting {
             feederServo = hardwareMap.get(Servo.class, RobotConstants.FEEDER_SERVO_NAME);
         } catch (Exception e) {
             feederServo = null;
+        }
+    }
+
+    public void applyPIDF() {
+        if (shooting1 != null && shooting2 != null) {
+            PIDFCoefficients pidf = new PIDFCoefficients(PIDF_P, PIDF_I, PIDF_D, PIDF_F);
+            shooting1.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER, pidf);
+            shooting2.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER, pidf);
         }
     }
 
@@ -145,7 +163,7 @@ public class Shooting {
             return;
         }
 
-        // Чистое встроенное управление аппаратным регулятором REV Hub (2000 тиков/сек)
+        // Вызов установки скорости для аппаратного регулятора REV Hub
         shooting1.setVelocity(targetVelocity);
         shooting2.setVelocity(targetVelocity);
 
