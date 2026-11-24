@@ -30,17 +30,17 @@ public class Shooting {
     public static double MAX_TICKS_PER_SECOND = 2000.0;
 
     // --- АЭРОДИНАМИЧЕСКИЕ НАСТРОЙКИ (FTC Dashboard) ---
-    // Компенсация воздушного сопротивления для Мотора 2 (1.0 = выключено, 1.05 = +5% мощности мотору 2 для преодоления потока воздуха)
+    // Компенсация воздушного сопротивления для Мотора 2
     public static double MOTOR2_AIR_BOOST = 1.00;
-    // Плавный разгон (чтобы не создавать резкую воздушную стену)
+    // Плавный разгон
     public static boolean USE_SMOOTH_RAMP = true;
     public static double RAMP_STEP_TICKS = 80.0; // Шаг нарастания скорости за один кадр
 
-    // Калиброванные PIDF параметры для шутера (I = 0)
-    public static double PIDF_P = 2.0;
-    public static double PIDF_I = 0.0;
+    // Точно доведенные PIDF параметры для устранения погрешности в 40 тиков
+    public static double PIDF_P = 4.5;        // Увеличенный P для устранения остаточной погрешности в 40 тиков
+    public static double PIDF_I = 0.0;        // I = 0 (убирает уплывание)
     public static double PIDF_D = 0.0;
-    public static double PIDF_F = 15.5;
+    public static double PIDF_F = 15.8;       // Сбалансированный Feedforward под 2000 тиков/сек
 
     private double current1Amps = 0.0;
     private double current2Amps = 0.0;
@@ -184,7 +184,7 @@ public class Shooting {
             return;
         }
 
-        // 1. ПЛАВНЫЙ АЭРОДИНАМИЧЕСКИЙ РАЗГОН (Ramp): не создаем резкий скачок давления воздуха
+        // 1. ПЛАВНЫЙ АЭРОДИНАМИЧЕСКИЙ РАЗГОН (Ramp)
         if (USE_SMOOTH_RAMP) {
             if (currentRampVelocity < targetVelocity) {
                 currentRampVelocity = Math.min(targetVelocity, currentRampVelocity + RAMP_STEP_TICKS);
