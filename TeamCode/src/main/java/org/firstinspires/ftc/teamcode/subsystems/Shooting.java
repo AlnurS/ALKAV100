@@ -21,17 +21,26 @@ public class Shooting {
 
     private double targetPower = 0;           // Мощность от 0.0 до 1.0
     private double targetVelocity = 0;        // Целевая скорость в тиках в секунду
-    private double lastSetVelocity = -99999;  // Запомненная скорость для предотвращения спама команд
+    private double currentRampVelocity = 0;   // Плавная текущая целевая скорость (Ramp)
+    private double lastSetVelocity1 = -99999; 
+    private double lastSetVelocity2 = -99999;
     private double powerCoefficient = RobotConstants.SHOOTING_POWER_COEFFICIENT;
 
     // Целевая рабочая скорость шутера (2000 тиков в секунду)
     public static double MAX_TICKS_PER_SECOND = 2000.0;
 
-    // Идеальные PIDF параметры без дрейфа (I = 0 жестко зафиксирован для устранения уплывания)
-    public static double PIDF_P = 2.0;        // Маленький P для поддержания уровня
-    public static double PIDF_I = 0.0;        // I = 0 СТРОГО 0, чтобы обороты НЕ плыли!
+    // --- АЭРОДИНАМИЧЕСКИЕ НАСТРОЙКИ (FTC Dashboard) ---
+    // Компенсация воздушного сопротивления для Мотора 2 (1.0 = выключено, 1.05 = +5% мощности мотору 2 для преодоления потока воздуха)
+    public static double MOTOR2_AIR_BOOST = 1.00;
+    // Плавный разгон (чтобы не создавать резкую воздушную стену)
+    public static boolean USE_SMOOTH_RAMP = true;
+    public static double RAMP_STEP_TICKS = 80.0; // Шаг нарастания скорости за один кадр
+
+    // Калиброванные PIDF параметры для шутера (I = 0)
+    public static double PIDF_P = 2.0;
+    public static double PIDF_I = 0.0;
     public static double PIDF_D = 0.0;
-    public static double PIDF_F = 15.5;       // Feedforward точно под 2000 тиков/сек
+    public static double PIDF_F = 15.5;
 
     private double current1Amps = 0.0;
     private double current2Amps = 0.0;
@@ -163,22 +172,41 @@ public class Shooting {
         }
 
         if (Math.abs(targetVelocity) < 10.0) {
-            if (lastSetVelocity != 0.0) {
+            if (lastSetVelocity1 != 0.0 || lastSetVelocity2 != 0.0) {
                 shooting1.setVelocity(0.0);
                 shooting2.setVelocity(0.0);
-                lastSetVelocity = 0.0;
+                lastSetVelocity1 = 0.0;
+                lastSetVelocity2 = 0.0;
             }
+            currentRampVelocity = 0.0;
             filteredVelocity1 = 0.0;
             filteredVelocity2 = 0.0;
             return;
         }
 
-        // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Отправляем setVelocity ТОЛЬКО при изменении целевой скорости!
-        // Постоянная отправка setVelocity в каждом цикле сбрасывала фильтр REV Hub и заставляла обороты плыть.
-        if (Math.abs(targetVelocity - lastSetVelocity) > 1.0) {
-            shooting1.setVelocity(targetVelocity);
-            shooting2.setVelocity(targetVelocity);
-            lastSetVelocity = targetVelocity;
+        // 1. ПЛАВНЫЙ АЭРОДИНАМИЧЕСКИЙ РАЗГОН (Ramp): не создаем резкий скачок давления воздуха
+        if (USE_SMOOTH_RAMP) {
+            if (currentRampVelocity < targetVelocity) {
+                currentRampVelocity = Math.min(targetVelocity, currentRampVelocity + RAMP_STEP_TICKS);
+            } else if (currentRampVelocity > targetVelocity) {
+                currentRampVelocity = Math.max(targetVelocity, currentRampVelocity - RAMP_STEP_TICKS);
+            }
+        } else {
+            currentRampVelocity = targetVelocity;
+        }
+
+        // 2. АЭРОДИНАМИЧЕСКАЯ КОМПЕНСАЦИЯ ДЛЯ МОТОРА 2 (MOTOR2_AIR_BOOST)
+        double v1Target = currentRampVelocity;
+        double v2Target = currentRampVelocity * MOTOR2_AIR_BOOST;
+
+        // Отправка команд на моторы только при изменении скоростей
+        if (Math.abs(v1Target - lastSetVelocity1) > 1.0) {
+            shooting1.setVelocity(v1Target);
+            lastSetVelocity1 = v1Target;
+        }
+        if (Math.abs(v2Target - lastSetVelocity2) > 1.0) {
+            shooting2.setVelocity(v2Target);
+            lastSetVelocity2 = v2Target;
         }
 
         // Фильтрация показаний скоростей для стабильного отображения в телеметрии
@@ -213,14 +241,6 @@ public class Shooting {
         return filteredVelocity2 > 0 ? filteredVelocity2 : (shooting2 != null ? shooting2.getVelocity() : 0.0);
     }
 
-    public double getRawVelocity1() {
-        return shooting1 != null ? shooting1.getVelocity() : 0.0;
-    }
-
-    public double getRawVelocity2() {
-        return shooting2 != null ? shooting2.getVelocity() : 0.0;
-    }
-
     public boolean isReady() {
         double v1 = Math.abs(getVelocity1());
         double v2 = Math.abs(getVelocity2());
@@ -243,6 +263,7 @@ public class Shooting {
     public void stop() {
         setPower(0);
         targetVelocity = 0;
+        currentRampVelocity = 0;
         spinningUp = false;
     }
 
